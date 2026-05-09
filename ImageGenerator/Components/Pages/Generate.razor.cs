@@ -185,15 +185,21 @@ public partial class Generate : IDisposable
                 InvokeAsync(StateHasChanged);
             });
 
-            var results = await Generator.GenerateImagesAsync(
+            void OnImageReady(GeneratedImage image)
+            {
+                generatedImages.Add(image);
+                InvokeAsync(StateHasChanged);
+            }
+
+            await Generator.GenerateImagesAsync(
                 prompt,
                 generateCount,
                 uploadedImages,
                 progress,
+                OnImageReady,
                 generationCts.Token);
 
-            generatedImages.AddRange(results);
-            Log.LogInformation("生成完了 UI: {Count} 件", results.Length);
+            Log.LogInformation("生成完了 UI: {Count} 件", generatedImages.Count);
         }
         catch (OperationCanceledException) when (generationCts?.IsCancellationRequested == true)
         {

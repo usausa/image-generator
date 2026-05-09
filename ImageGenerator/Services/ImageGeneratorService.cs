@@ -27,13 +27,14 @@ public sealed class ImageGeneratorService
     }
 
     /// <summary>
-    /// 画像を生成してローカルに保存する。
+    /// 画像を生成してローカルに保存する。生成完了した画像は順次 <paramref name="onImageReady"/> で通知する。
     /// </summary>
     public async Task<GeneratedImage[]> GenerateImagesAsync(
         string prompt,
         int count,
         IReadOnlyList<UploadedImage> referenceImages,
         IProgress<string> progress,
+        Action<GeneratedImage> onImageReady,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
@@ -73,13 +74,16 @@ public sealed class ImageGeneratorService
                 "生成完了: {Index}/{Count} FileName={FileName} Size={Size}bytes Elapsed={Elapsed}",
                 index, count, fileName, imageData.Length, sw.Elapsed);
 
-            results[i] = new GeneratedImage
+            var generated = new GeneratedImage
             {
                 FileName = fileName,
                 FilePath = filePath,
                 WebUrl = $"/output/{fileName}",
                 Elapsed = sw.Elapsed
             };
+
+            results[i] = generated;
+            onImageReady(generated);
         }
 
         totalSw.Stop();

@@ -3,10 +3,34 @@ using ImageGenerator.Services;
 using ImageGenerator.Settings;
 
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting.WindowsServices;
 
-var builder = WebApplication.CreateBuilder(args);
+using Serilog;
 
-// Add services to the container.
+//--------------------------------------------------------------------------------
+// Configure builder
+//--------------------------------------------------------------------------------
+
+Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : default
+});
+
+// Path
+builder.Configuration.SetBasePath(AppContext.BaseDirectory);
+
+// Service
+builder.Host
+    .UseWindowsService()
+    .UseSystemd();
+
+// Logging
+builder.Logging.ClearProviders();
+builder.Services.AddSerilog(options => options.ReadFrom.Configuration(builder.Configuration));
+
+// App services
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -20,9 +44,13 @@ builder.Services.AddHttpClient(nameof(ImageGeneratorService), client =>
 
 builder.Services.AddSingleton<ImageGeneratorService>();
 
+//--------------------------------------------------------------------------------
+// Configure request pipeline
+//--------------------------------------------------------------------------------
+
 var app = builder.Build();
 
-// Ensure upload and output directories exist, then serve them as static files.
+// Ensure upload and output directories exist (relative to AppContext.BaseDirectory = CWD).
 var setting = app.Configuration.GetSection("ImageGenerator").Get<ImageGeneratorSetting>() ?? new();
 var uploadDir = Path.GetFullPath(setting.UploadPath);
 var outputDir = Path.GetFullPath(setting.OutputPath);
@@ -40,7 +68,6 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/output"
 });
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
