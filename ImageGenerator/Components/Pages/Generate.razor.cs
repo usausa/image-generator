@@ -19,12 +19,13 @@ public partial class Generate : IDisposable
     // State
     //--------------------------------------------------------------------------------
 
-    private List<UploadedImage> uploadedImages = [];
-    private List<GeneratedImage> generatedImages = [];
+    private readonly List<UploadedImage> uploadedImages = [];
+    private readonly List<GeneratedImage> generatedImages = [];
     private GeneratedImage? previewImage;
 
     private string prompt = string.Empty;
     private int generateCount = 1;
+    private ImageGenerationParameters generateParameters = new();
 
     private bool isBusy;
     private bool isUploading;
@@ -195,6 +196,7 @@ public partial class Generate : IDisposable
                 prompt,
                 generateCount,
                 uploadedImages,
+                generateParameters,
                 progress,
                 OnImageReady,
                 generationCts.Token);

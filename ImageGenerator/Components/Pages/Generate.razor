@@ -7,7 +7,8 @@
     <!-- Header / Action bar -->
     <div class="ig-actions">
         <div class="ig-actions-left">
-            <div class="ig-count-selector">
+            <!-- 生成件数 -->
+            <div class="ig-param-group">
                 <label class="ig-label">生成件数</label>
                 <select class="ig-select" @bind="generateCount" disabled="@IsBusy">
                     @for (var i = 1; i <= 8; i++)
@@ -15,6 +16,53 @@
                         <option value="@i">@i</option>
                     }
                 </select>
+            </div>
+
+            <!-- サイズ -->
+            <div class="ig-param-group">
+                <label class="ig-label">サイズ</label>
+                <select class="ig-select" value="@generateParameters.Size"
+                        @onchange="e => generateParameters = generateParameters with { Size = e.Value!.ToString()! }"
+                        disabled="@IsBusy">
+                    <option value="1024x1024">1024×1024（正方形）</option>
+                    <option value="1024x1536">1024×1536（縦長）</option>
+                    <option value="1536x1024">1536×1024（横長）</option>
+                </select>
+            </div>
+
+            <!-- 品質 -->
+            <div class="ig-param-group">
+                <label class="ig-label">品質</label>
+                <select class="ig-select" value="@generateParameters.Quality"
+                        @onchange="e => generateParameters = generateParameters with { Quality = e.Value!.ToString()! }"
+                        disabled="@IsBusy">
+                    <option value="low">Low（低・高速）</option>
+                    <option value="medium">Medium（中）</option>
+                    <option value="high">High（高・低速）</option>
+                </select>
+            </div>
+
+            <!-- 出力形式 -->
+            <div class="ig-param-group">
+                <label class="ig-label">形式</label>
+                <select class="ig-select" value="@generateParameters.OutputFormat"
+                        @onchange="e => generateParameters = generateParameters with { OutputFormat = e.Value!.ToString()! }"
+                        disabled="@IsBusy">
+                    <option value="png">PNG</option>
+                    <option value="jpeg">JPEG</option>
+                </select>
+            </div>
+
+            <!-- 圧縮率（JPEG 時のみ有効） -->
+            <div class="ig-param-group ig-param-compression @(generateParameters.OutputFormat != "jpeg" ? "ig-param-disabled" : "")">
+                <label class="ig-label">
+                    圧縮率
+                    <span class="ig-param-value">@generateParameters.OutputCompression</span>
+                </label>
+                <input type="range" class="ig-slider" min="0" max="100" step="5"
+                       value="@generateParameters.OutputCompression"
+                       @onchange="e => generateParameters = generateParameters with { OutputCompression = int.Parse(e.Value!.ToString()!) }"
+                       disabled="@(IsBusy || generateParameters.OutputFormat != "jpeg")" />
             </div>
         </div>
         <div class="ig-actions-right">

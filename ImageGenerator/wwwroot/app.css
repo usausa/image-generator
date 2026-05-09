@@ -276,19 +276,57 @@ h1:focus {
 .ig-actions-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
+    flex-wrap: wrap;
 }
 
 .ig-actions-right {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .ig-label {
     font-size: 0.82rem;
     color: var(--se-text-secondary);
     font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.ig-param-value {
+    font-variant-numeric: tabular-nums;
+    color: var(--se-text);
+    min-width: 2.5ch;
+    text-align: right;
+}
+
+/* パラメータグループ（ラベル + コントロール を縦に並べる） */
+.ig-param-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ig-param-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* スライダー */
+.ig-slider {
+    width: 120px;
+    height: 4px;
+    accent-color: var(--se-primary);
+    cursor: pointer;
+    padding: 0;
+}
+
+.ig-slider:disabled {
+    cursor: not-allowed;
 }
 
 .ig-count-selector {

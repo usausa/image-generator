@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 
 public sealed class ImageGeneratorService
 {
+    // TODO これも設定値に
     private const int MaxRetries = 5;
 
     private readonly ILogger<ImageGeneratorService> log;
@@ -22,8 +23,9 @@ public sealed class ImageGeneratorService
     public ImageGeneratorService(ILogger<ImageGeneratorService> log, IHttpClientFactory httpClientFactory, IOptions<ImageGeneratorSetting> options)
     {
         this.log = log;
-        this.setting = options.Value;
-        this.httpClient = httpClientFactory.CreateClient(nameof(ImageGeneratorService));
+        setting = options.Value;
+        // TODO 必要なタイミングでクライアントを作成
+        httpClient = httpClientFactory.CreateClient(nameof(ImageGeneratorService));
     }
 
     /// <summary>
@@ -33,6 +35,7 @@ public sealed class ImageGeneratorService
         string prompt,
         int count,
         IReadOnlyList<UploadedImage> referenceImages,
+        ImageGenerationParameters parameters,
         IProgress<string> progress,
         Action<GeneratedImage> onImageReady,
         CancellationToken cancellationToken)
@@ -46,10 +49,11 @@ public sealed class ImageGeneratorService
         }
 
         var results = new GeneratedImage[count];
+        var ext = parameters.OutputFormat == "jpeg" ? ".jpg" : ".png";
 
         log.LogInformation(
-            "画像生成開始: Prompt=\"{Prompt}\" Count={Count} ReferenceImages={RefCount} OutputDir={OutputDir}",
-            prompt, count, referenceImages.Count, outputDir);
+            "画像生成開始: Prompt=\"{Prompt}\" Count={Count} ReferenceImages={RefCount} Size={Size} Quality={Quality} Format={Format} Compression={Compression} OutputDir={OutputDir}",
+            prompt, count, referenceImages.Count, parameters.Size, parameters.Quality, parameters.OutputFormat, parameters.OutputCompression, outputDir);
 
         var totalSw = Stopwatch.StartNew();
 
@@ -62,11 +66,11 @@ public sealed class ImageGeneratorService
 
             var sw = Stopwatch.StartNew();
             var imageData = await ExecuteWithRetryAsync(
-                ct => EditOrGenerateImageAsync(prompt, referenceImages, ct, progress),
+                ct => EditOrGenerateImageAsync(prompt, referenceImages, parameters, ct, progress),
                 cancellationToken);
             sw.Stop();
 
-            var fileName = $"output-{DateTime.Now:yyyyMMdd-HHmmss}-{index:D2}.png";
+            var fileName = $"output-{DateTime.Now:yyyyMMdd-HHmmss}-{index:D2}{ext}";
             var filePath = Path.Combine(outputDir, fileName);
             await File.WriteAllBytesAsync(filePath, imageData, cancellationToken);
 
@@ -97,19 +101,24 @@ public sealed class ImageGeneratorService
     private async Task<byte[]> EditOrGenerateImageAsync(
         string prompt,
         IReadOnlyList<UploadedImage> referenceImages,
+        ImageGenerationParameters parameters,
         CancellationToken cancellationToken,
         IProgress<string> progress)
     {
         using var content = new MultipartFormDataContent();
         content.Add(new StringContent(prompt, Encoding.UTF8), "prompt");
         content.Add(new StringContent(setting.DeploymentName, Encoding.UTF8), "model");
-        content.Add(new StringContent("1024x1024", Encoding.UTF8), "size");
-        content.Add(new StringContent("low", Encoding.UTF8), "quality");
+        content.Add(new StringContent(parameters.Size, Encoding.UTF8), "size");
+        content.Add(new StringContent(parameters.Quality, Encoding.UTF8), "quality");
+        content.Add(new StringContent(parameters.OutputFormat, Encoding.UTF8), "output_format");
+        if (parameters.OutputFormat == "jpeg")
+        {
+            content.Add(new StringContent(parameters.OutputCompression.ToString(), Encoding.UTF8), "output_compression");
+        }
         content.Add(new StringContent("1", Encoding.UTF8), "n");
 
         foreach (var image in referenceImages)
         {
-            // ファイルから読み込む（メモリに byte[] を持たない設計）
             var imageBytes = await File.ReadAllBytesAsync(image.FilePath, cancellationToken);
             var imageContent = new ByteArrayContent(imageBytes);
             imageContent.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
@@ -128,10 +137,8 @@ public sealed class ImageGeneratorService
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromMinutes(10));
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl)
-        {
-            Content = content
-        };
+        using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+        request.Content = content;
         request.Headers.Add("api-key", setting.ApiKey);
 
         using var response = await httpClient.SendAsync(request, cts.Token);
