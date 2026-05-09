@@ -24,9 +24,6 @@ public sealed class ImageGeneratorService
         httpClient = httpClientFactory.CreateClient(nameof(ImageGeneratorService));
     }
 
-    /// <summary>
-    /// 画像を生成してローカルに保存する。生成完了した画像は順次 <paramref name="onImageReady"/> で通知する。
-    /// </summary>
     public async Task<GeneratedImage[]> GenerateImagesAsync(
         string prompt,
         int count,
