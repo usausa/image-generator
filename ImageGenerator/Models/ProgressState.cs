@@ -4,12 +4,11 @@ public enum ProgressKind
 {
     Preparing,
     Generating,
-    SendingRequest,
+    SendingRequest
 }
 
 public sealed class ProgressState
 {
-    public static readonly ProgressState Preparing = new(ProgressKind.Preparing);
     public static readonly ProgressState SendingRequest = new(ProgressKind.SendingRequest);
 
     public static ProgressState Generating(int current, int total) =>
