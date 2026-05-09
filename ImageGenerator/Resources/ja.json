@@ -1,0 +1,43 @@
+{
+  "PageTitle": "Image Generator",
+
+  "LabelCount": "生成件数",
+  "LabelSize": "サイズ",
+  "LabelQuality": "品質",
+  "LabelFormat": "形式",
+  "LabelCompression": "圧縮率",
+
+  "BtnGenerate": "生成",
+  "BtnClear": "クリア",
+
+  "SizeSquare": "1024x1024 (正方形)",
+  "SizePortrait": "1024x1536 (縦長)",
+  "SizeLandscape": "1536x1024 (横長)",
+
+  "QualityLow": "Low (低・高速)",
+  "QualityMedium": "Medium (中)",
+  "QualityHigh": "High (高・低速)",
+
+  "PromptPlaceholder": "プロンプトを入力してください。参照画像がある場合は Image01, Image02 などで参照できます。",
+  "DropZoneHint": "参照画像をここにドラッグ＆ドロップ、またはクリックして選択 (PNG / JPEG / WebP)",
+
+  "TitleRemoveImage": "削除",
+  "TitleClose": "閉じる",
+
+  "ProgressUploading": "アップロード中...",
+  "ProgressPreparing": "準備中...",
+  "ProgressGenerating": "生成中 {0}/{1}...",
+  "ProgressSendingRequest": "API リクエスト送信中...",
+
+  "ResultsHeader": "生成結果 ({0} 件)",
+  "PreviewElapsed": "処理時間: {0}",
+
+  "ErrorUnhandled": "ハンドルされていないエラーが発生しました。",
+  "BtnReload": "再読み込み",
+
+  "Error_UploadIoError": "ファイル I/O エラーによりアップロードに失敗しました。",
+  "Error_UploadAccessDenied": "アクセス拒否によりアップロードに失敗しました。",
+  "Error_GenerationRequestFailed": "画像生成リクエストが失敗しました。",
+  "Error_GenerationTimeout": "リクエストがタイムアウトまたはキャンセルされました。",
+  "Error_GenerationNoData": "API から画像データが返されませんでした。"
+}

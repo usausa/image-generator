@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
+using ImageGenerator.Errors;
 using ImageGenerator.Models;
 using ImageGenerator.Settings;
 
@@ -29,7 +30,7 @@ public sealed class ImageGeneratorService
         int count,
         IReadOnlyList<UploadedImage> referenceImages,
         ImageGenerationParameters parameters,
-        IProgress<string> progress,
+        IProgress<ProgressState> progress,
         Action<GeneratedImage> onImageReady,
         CancellationToken cancellationToken)
     {
@@ -59,7 +60,7 @@ public sealed class ImageGeneratorService
         for (var i = 0; i < count; i++)
         {
             var index = i + 1;
-            progress.Report($"生成中 {index}/{count}...");
+            progress.Report(ProgressState.Generating(index, count));
 
             log.InfoGenerationImageStarted(index, count);
 
@@ -106,7 +107,7 @@ public sealed class ImageGeneratorService
         IReadOnlyList<UploadedImage> referenceImages,
         ImageGenerationParameters parameters,
         CancellationToken cancellationToken,
-        IProgress<string> progress)
+        IProgress<ProgressState> progress)
     {
         using var content = new MultipartFormDataContent();
 #pragma warning disable CA2000
@@ -141,7 +142,7 @@ public sealed class ImageGeneratorService
             : setting.Endpoint + "/";
         var requestUrl = new Uri(new Uri(endpoint), apiPath);
 
-        progress.Report("APIリクエスト送信中...");
+        progress.Report(ProgressState.SendingRequest);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromMinutes(10));
@@ -163,11 +164,11 @@ public sealed class ImageGeneratorService
 
         if (data.GetArrayLength() == 0)
         {
-            throw new InvalidOperationException("画像データが返されませんでした。");
+            throw new AppException(AppErrorCode.GenerationNoData, "API returned empty image data array.");
         }
 
         var base64 = data[0].GetProperty("b64_json").GetString()
-            ?? throw new InvalidOperationException("画像データが空です。");
+            ?? throw new AppException(AppErrorCode.GenerationNoData, "API returned null b64_json.");
 
         return Convert.FromBase64String(base64);
     }
@@ -203,9 +204,9 @@ public sealed class ImageGeneratorService
             or HttpStatusCode.ServiceUnavailable
             or HttpStatusCode.GatewayTimeout;
 
-    private static HttpRequestException CreateRequestException(HttpStatusCode statusCode, string responseBody)
+    private static AppException CreateRequestException(HttpStatusCode statusCode, string responseBody)
     {
-        var message = $"API 呼び出しに失敗しました。Status={(int)statusCode} {statusCode}. Response={responseBody}";
-        return new HttpRequestException(message, null, statusCode);
+        var message = $"API request failed. Status={(int)statusCode} {statusCode}. Response={responseBody}";
+        return new AppException(AppErrorCode.GenerationRequestFailed, message);
     }
 }

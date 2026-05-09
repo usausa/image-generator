@@ -1,9 +1,11 @@
 using ImageGenerator.Components;
+using ImageGenerator.Localization;
 using ImageGenerator.Services;
 using ImageGenerator.Settings;
 
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Localization;
 
 using Serilog;
 
@@ -33,6 +35,9 @@ builder.Services.AddSerilog(options => options.ReadFrom.Configuration(builder.Co
 // App services
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+builder.Services.AddSingleton<IStringLocalizerFactory, JsonStringLocalizerFactory>();
 
 builder.Services.Configure<ImageGeneratorSetting>(
     builder.Configuration.GetSection("ImageGenerator"));
@@ -73,6 +78,15 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseRequestLocalization(options =>
+{
+#pragma warning disable CA1861
+    var cultures = new[] { "en", "ja" };
+    options.SetDefaultCulture("en")
+        .AddSupportedCultures(cultures)
+        .AddSupportedUICultures(cultures);
+#pragma warning restore CA1861
+});
 app.UseAntiforgery();
 
 app.MapStaticAssets();

@@ -1,15 +1,15 @@
 @page "/"
 
-<PageTitle>ImageGenerator</PageTitle>
+<PageTitle>@L["PageTitle"]</PageTitle>
 
 <div class="ig">
 
     <!-- Header / Action bar -->
     <div class="ig-actions">
         <div class="ig-actions-left">
-            <!-- 生成件数 -->
+            <!-- Count -->
             <div class="ig-param-group">
-                <label class="ig-label">生成件数</label>
+                <label class="ig-label">@L["LabelCount"]</label>
                 <select class="ig-select" @bind="generateCount" disabled="@IsBusy">
                     @for (var i = 1; i <= 8; i++)
                     {
@@ -18,33 +18,33 @@
                 </select>
             </div>
 
-            <!-- サイズ -->
+            <!-- Size -->
             <div class="ig-param-group">
-                <label class="ig-label">サイズ</label>
+                <label class="ig-label">@L["LabelSize"]</label>
                 <select class="ig-select" value="@generateParameters.Size"
                         @onchange="e => generateParameters = generateParameters with { Size = e.Value!.ToString()! }"
                         disabled="@IsBusy">
-                    <option value="1024x1024">1024×1024（正方形）</option>
-                    <option value="1024x1536">1024×1536（縦長）</option>
-                    <option value="1536x1024">1536×1024（横長）</option>
+                    <option value="1024x1024">@L["SizeSquare"]</option>
+                    <option value="1024x1536">@L["SizePortrait"]</option>
+                    <option value="1536x1024">@L["SizeLandscape"]</option>
                 </select>
             </div>
 
-            <!-- 品質 -->
+            <!-- Quality -->
             <div class="ig-param-group">
-                <label class="ig-label">品質</label>
+                <label class="ig-label">@L["LabelQuality"]</label>
                 <select class="ig-select" value="@generateParameters.Quality"
                         @onchange="e => generateParameters = generateParameters with { Quality = e.Value!.ToString()! }"
                         disabled="@IsBusy">
-                    <option value="low">Low（低・高速）</option>
-                    <option value="medium">Medium（中）</option>
-                    <option value="high">High（高・低速）</option>
+                    <option value="low">@L["QualityLow"]</option>
+                    <option value="medium">@L["QualityMedium"]</option>
+                    <option value="high">@L["QualityHigh"]</option>
                 </select>
             </div>
 
-            <!-- 出力形式 -->
+            <!-- Format -->
             <div class="ig-param-group">
-                <label class="ig-label">形式</label>
+                <label class="ig-label">@L["LabelFormat"]</label>
                 <select class="ig-select" value="@generateParameters.OutputFormat"
                         @onchange="e => generateParameters = generateParameters with { OutputFormat = e.Value!.ToString()! }"
                         disabled="@IsBusy">
@@ -53,10 +53,10 @@
                 </select>
             </div>
 
-            <!-- 圧縮率（JPEG 時のみ有効） -->
+            <!-- Compression (JPEG only) -->
             <div class="ig-param-group ig-param-compression @(generateParameters.OutputFormat != "jpeg" ? "ig-param-disabled" : "")">
                 <label class="ig-label">
-                    圧縮率
+                    @L["LabelCompression"]
                     <span class="ig-param-value">@generateParameters.OutputCompression</span>
                 </label>
                 <input type="range" class="ig-slider" min="0" max="100" step="5"
@@ -67,17 +67,17 @@
         </div>
         <div class="ig-actions-right">
             <button type="button" class="btn-se-primary" @onclick="GenerateAsync" disabled="@(IsBusy || string.IsNullOrWhiteSpace(prompt))">
-                <i class="bi bi-magic"></i> 生成
+                <i class="bi bi-magic"></i> @L["BtnGenerate"]
             </button>
             <button type="button" class="btn-se-ghost" @onclick="ClearInputs" disabled="@IsBusy">
-                <i class="bi bi-eraser"></i> クリア
+                <i class="bi bi-eraser"></i> @L["BtnClear"]
             </button>
         </div>
     </div>
 
     <!-- Prompt area -->
     <div class="ig-prompt-area">
-        <textarea class="ig-prompt" placeholder="プロンプトを入力してください。参照画像がある場合は Image01, Image02 などで参照できます。"
+        <textarea class="ig-prompt" placeholder="@L["PromptPlaceholder"]"
                   @bind="prompt" @bind:event="oninput" disabled="@IsBusy" rows="4"></textarea>
 
         <!-- Drop zone: transparent InputFile covers the entire area for both click and drag-and-drop -->
@@ -87,7 +87,7 @@
              @ondragover:preventDefault
              @ondrop:preventDefault @ondrop="OnDrop">
             <i class="bi bi-cloud-arrow-up"></i>
-            <span>参照画像をここにドラッグ＆ドロップ、またはクリックして選択（PNG / JPEG / WebP）</span>
+            <span>@L["DropZoneHint"]</span>
             @if (!IsBusy)
             {
                 <InputFile OnChange="OnFilesChangedAsync" multiple accept="image/png,image/jpeg,image/webp"
@@ -104,7 +104,7 @@
                     <div class="ig-ref-thumb" title="@img.Name">
                         <img src="@img.WebUrl" alt="@img.Name" />
                         <span class="ig-ref-label">@img.Name</span>
-                        <button type="button" class="ig-ref-remove" @onclick="() => RemoveUploadedImage(img)" disabled="@IsBusy" title="削除">
+                        <button type="button" class="ig-ref-remove" @onclick="() => RemoveUploadedImage(img)" disabled="@IsBusy" title="@L["TitleRemoveImage"]">
                             <i class="bi bi-x"></i>
                         </button>
                     </div>
@@ -118,7 +118,7 @@
     {
         <div class="ig-progress">
             <div class="spinner-se" role="status"></div>
-            <span class="ig-progress-message">アップロード中...</span>
+            <span class="ig-progress-message">@L["ProgressUploading"]</span>
         </div>
     }
 
@@ -135,12 +135,12 @@
     }
 
     <!-- Error -->
-    @if (errorMessage is not null)
+    @if (errorCode.HasValue)
     {
         <div class="fb-error-toast">
             <i class="bi bi-exclamation-circle"></i>
-            <span>@errorMessage</span>
-            <button type="button" class="btn-se-icon" @onclick="() => errorMessage = null"><i class="bi bi-x"></i></button>
+            <span>@ErrorMessage</span>
+            <button type="button" class="btn-se-icon" @onclick="() => errorCode = null"><i class="bi bi-x"></i></button>
         </div>
     }
 
@@ -148,7 +148,7 @@
     @if (generatedImages.Count > 0)
     {
         <div class="ig-results-header">
-            <span>生成結果 (@generatedImages.Count 件)</span>
+            <span>@string.Format(L["ResultsHeader"], generatedImages.Count)</span>
         </div>
         <div class="ig-results">
             @foreach (var image in generatedImages)
@@ -171,8 +171,8 @@
         <div class="ig-preview-panel" @onclick:stopPropagation>
             <div class="ig-preview-header">
                 <span class="ig-preview-filename">@previewImage.FileName</span>
-                <span class="ig-preview-elapsed">処理時間: @previewImage.Elapsed.ToString(@"m\:ss\.ff")</span>
-                <button type="button" class="btn-se-icon" @onclick="ClosePreview" title="閉じる">
+                <span class="ig-preview-elapsed">@string.Format(L["PreviewElapsed"], previewImage.Elapsed.ToString(@"m\:ss\.ff"))</span>
+                <button type="button" class="btn-se-icon" @onclick="ClosePreview" title="@L["TitleClose"]">
                     <i class="bi bi-x-lg"></i>
                 </button>
             </div>
@@ -183,3 +183,4 @@
     }
 
 </div>
+

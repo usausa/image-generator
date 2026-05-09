@@ -1,0 +1,43 @@
+{
+  "PageTitle": "Image Generator",
+
+  "LabelCount": "Count",
+  "LabelSize": "Size",
+  "LabelQuality": "Quality",
+  "LabelFormat": "Format",
+  "LabelCompression": "Compression",
+
+  "BtnGenerate": "Generate",
+  "BtnClear": "Clear",
+
+  "SizeSquare": "1024x1024 (Square)",
+  "SizePortrait": "1024x1536 (Portrait)",
+  "SizeLandscape": "1536x1024 (Landscape)",
+
+  "QualityLow": "Low (Fast)",
+  "QualityMedium": "Medium",
+  "QualityHigh": "High (Slow)",
+
+  "PromptPlaceholder": "Enter a prompt. Reference images can be referenced as Image01, Image02, etc.",
+  "DropZoneHint": "Drag & drop reference images here, or click to select (PNG / JPEG / WebP)",
+
+  "TitleRemoveImage": "Remove",
+  "TitleClose": "Close",
+
+  "ProgressUploading": "Uploading...",
+  "ProgressPreparing": "Preparing...",
+  "ProgressGenerating": "Generating {0}/{1}...",
+  "ProgressSendingRequest": "Sending API request...",
+
+  "ResultsHeader": "Results ({0})",
+  "PreviewElapsed": "Time: {0}",
+
+  "ErrorUnhandled": "An unhandled error has occurred.",
+  "BtnReload": "Reload",
+
+  "Error_UploadIoError": "Upload failed due to a file I/O error.",
+  "Error_UploadAccessDenied": "Upload failed: access denied.",
+  "Error_GenerationRequestFailed": "Image generation request failed.",
+  "Error_GenerationTimeout": "The request timed out or was cancelled.",
+  "Error_GenerationNoData": "The API returned no image data."
+}

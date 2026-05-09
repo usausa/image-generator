@@ -3,12 +3,14 @@ namespace ImageGenerator.Components.Pages;
 using System.Diagnostics;
 using System.Globalization;
 
-using global::ImageGenerator.Models;
-using global::ImageGenerator.Services;
-using global::ImageGenerator.Settings;
+using ImageGenerator.Errors;
+using ImageGenerator.Models;
+using ImageGenerator.Services;
+using ImageGenerator.Settings;
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
 
@@ -32,7 +34,7 @@ public sealed partial class Generate : IDisposable
     private bool isUploading;
     private string progressMessage = string.Empty;
     private string progressElapsed = string.Empty;
-    private string? errorMessage;
+    private AppErrorCode? errorCode;
 
     private bool isDragOver;
 
@@ -47,6 +49,10 @@ public sealed partial class Generate : IDisposable
     //--------------------------------------------------------------------------------
 
     private bool IsBusy => isBusy || isUploading;
+
+    private string? ErrorMessage => errorCode.HasValue
+        ? (string?)L[$"Error_{errorCode.Value}"]
+        : null;
 
     //--------------------------------------------------------------------------------
     // Inject
@@ -63,6 +69,9 @@ public sealed partial class Generate : IDisposable
 
     [Inject]
     public ILogger<Generate> Log { get; set; } = default!;
+
+    [Inject]
+    public IStringLocalizer<Generate> L { get; set; } = default!;
 
     //--------------------------------------------------------------------------------
     // Lifecycle
@@ -100,7 +109,7 @@ public sealed partial class Generate : IDisposable
     private async Task OnFilesChangedAsync(InputFileChangeEventArgs e)
     {
         isUploading = true;
-        errorMessage = null;
+        errorCode = null;
 
         var uploadDir = Path.GetFullPath(Setting.Value.UploadPath);
         Directory.CreateDirectory(uploadDir);
@@ -141,12 +150,12 @@ public sealed partial class Generate : IDisposable
         catch (IOException ex)
         {
             Log.ErrorUploadFailed(ex, ex.Message);
-            errorMessage = $"アップロードに失敗しました: {ex.Message}";
+            errorCode = AppErrorCode.UploadIoError;
         }
         catch (UnauthorizedAccessException ex)
         {
             Log.ErrorUploadFailed(ex, ex.Message);
-            errorMessage = $"アップロードに失敗しました: {ex.Message}";
+            errorCode = AppErrorCode.UploadAccessDenied;
         }
         finally
         {
@@ -166,9 +175,9 @@ public sealed partial class Generate : IDisposable
         }
 
         isBusy = true;
-        errorMessage = null;
+        errorCode = null;
         generatedImages.Clear();
-        progressMessage = "準備中...";
+        progressMessage = L["ProgressPreparing"];
         progressElapsed = string.Empty;
 
         totalStopwatch = Stopwatch.StartNew();
@@ -184,9 +193,16 @@ public sealed partial class Generate : IDisposable
 
         try
         {
-            var progress = new Progress<string>(msg =>
+            var progress = new Progress<ProgressState>(state =>
             {
-                progressMessage = msg;
+#pragma warning disable CA1305
+                progressMessage = state.Kind switch
+                {
+                    ProgressKind.Generating => String.Format(CultureInfo.CurrentUICulture, L["ProgressGenerating"], state.Current, state.Total),
+                    ProgressKind.SendingRequest => L["ProgressSendingRequest"],
+                    _ => L["ProgressPreparing"]
+                };
+#pragma warning restore CA1305
                 InvokeAsync(StateHasChanged);
             });
 
@@ -214,12 +230,17 @@ public sealed partial class Generate : IDisposable
         catch (OperationCanceledException ex)
         {
             Log.ErrorGenerateFailed(ex, ex.Message);
-            errorMessage = "リクエストがタイムアウトまたはキャンセルされました。";
+            errorCode = AppErrorCode.GenerationTimeout;
+        }
+        catch (AppException ex)
+        {
+            Log.ErrorGenerateFailed(ex, ex.Message);
+            errorCode = ex.Code;
         }
         catch (HttpRequestException ex)
         {
             Log.ErrorGenerateFailed(ex, ex.Message);
-            errorMessage = ex.Message;
+            errorCode = AppErrorCode.GenerationRequestFailed;
         }
         finally
         {
@@ -242,7 +263,7 @@ public sealed partial class Generate : IDisposable
         uploadedImages.Clear();
         generatedImages.Clear();
         previewImage = null;
-        errorMessage = null;
+        errorCode = null;
     }
 
     private void RemoveUploadedImage(UploadedImage image)
