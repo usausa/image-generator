@@ -11,4 +11,6 @@ public sealed class ImageGeneratorSetting
     public string OutputPath { get; set; } = "output";
 
     public string UploadPath { get; set; } = "uploads";
+
+    public int MaxRetries { get; set; } = 5;
 }

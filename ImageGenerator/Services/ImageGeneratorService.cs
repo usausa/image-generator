@@ -1,9 +1,9 @@
 namespace ImageGenerator.Services;
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 
 using ImageGenerator.Models;
@@ -13,9 +13,6 @@ using Microsoft.Extensions.Options;
 
 public sealed class ImageGeneratorService
 {
-    // TODO これも設定値に
-    private const int MaxRetries = 5;
-
     private readonly ILogger<ImageGeneratorService> log;
     private readonly HttpClient httpClient;
     private readonly ImageGeneratorSetting setting;
@@ -24,7 +21,6 @@ public sealed class ImageGeneratorService
     {
         this.log = log;
         setting = options.Value;
-        // TODO 必要なタイミングでクライアントを作成
         httpClient = httpClientFactory.CreateClient(nameof(ImageGeneratorService));
     }
 
@@ -51,9 +47,15 @@ public sealed class ImageGeneratorService
         var results = new GeneratedImage[count];
         var ext = parameters.OutputFormat == "jpeg" ? ".jpg" : ".png";
 
-        log.LogInformation(
-            "画像生成開始: Prompt=\"{Prompt}\" Count={Count} ReferenceImages={RefCount} Size={Size} Quality={Quality} Format={Format} Compression={Compression} OutputDir={OutputDir}",
-            prompt, count, referenceImages.Count, parameters.Size, parameters.Quality, parameters.OutputFormat, parameters.OutputCompression, outputDir);
+        log.InfoGenerationStarted(
+            prompt,
+            count,
+            referenceImages.Count,
+            parameters.Size,
+            parameters.Quality,
+            parameters.OutputFormat,
+            parameters.OutputCompression,
+            outputDir);
 
         var totalSw = Stopwatch.StartNew();
 
@@ -62,7 +64,7 @@ public sealed class ImageGeneratorService
             var index = i + 1;
             progress.Report($"生成中 {index}/{count}...");
 
-            log.LogInformation("生成開始: {Index}/{Count}", index, count);
+            log.InfoGenerationImageStarted(index, count);
 
             var sw = Stopwatch.StartNew();
             var imageData = await ExecuteWithRetryAsync(
@@ -74,9 +76,12 @@ public sealed class ImageGeneratorService
             var filePath = Path.Combine(outputDir, fileName);
             await File.WriteAllBytesAsync(filePath, imageData, cancellationToken);
 
-            log.LogInformation(
-                "生成完了: {Index}/{Count} FileName={FileName} Size={Size}bytes Elapsed={Elapsed}",
-                index, count, fileName, imageData.Length, sw.Elapsed);
+            log.InfoGenerationImageCompleted(
+                index,
+                count,
+                fileName,
+                imageData.Length,
+                sw.Elapsed);
 
             var generated = new GeneratedImage
             {
@@ -91,9 +96,10 @@ public sealed class ImageGeneratorService
         }
 
         totalSw.Stop();
-        log.LogInformation(
-            "画像生成終了: Count={Count} TotalElapsed={Elapsed} Files=[{Files}]",
-            count, totalSw.Elapsed, string.Join(", ", results.Select(r => r.FileName)));
+        log.InfoGenerationCompleted(
+            count,
+            totalSw.Elapsed,
+            string.Join(", ", results.Select(r => r.FileName)));
 
         return results;
     }
@@ -106,31 +112,37 @@ public sealed class ImageGeneratorService
         IProgress<string> progress)
     {
         using var content = new MultipartFormDataContent();
-        content.Add(new StringContent(prompt, Encoding.UTF8), "prompt");
-        content.Add(new StringContent(setting.DeploymentName, Encoding.UTF8), "model");
-        content.Add(new StringContent(parameters.Size, Encoding.UTF8), "size");
-        content.Add(new StringContent(parameters.Quality, Encoding.UTF8), "quality");
-        content.Add(new StringContent(parameters.OutputFormat, Encoding.UTF8), "output_format");
+#pragma warning disable CA2000
+        content.Add(new StringContent(prompt), "prompt");
+        content.Add(new StringContent(setting.DeploymentName), "model");
+        content.Add(new StringContent(parameters.Size), "size");
+        content.Add(new StringContent(parameters.Quality), "quality");
+        content.Add(new StringContent(parameters.OutputFormat), "output_format");
         if (parameters.OutputFormat == "jpeg")
         {
-            content.Add(new StringContent(parameters.OutputCompression.ToString(), Encoding.UTF8), "output_compression");
+            content.Add(new StringContent(parameters.OutputCompression.ToString(CultureInfo.InvariantCulture)), "output_compression");
         }
-        content.Add(new StringContent("1", Encoding.UTF8), "n");
+        content.Add(new StringContent("1"), "n");
+#pragma warning restore CA2000
 
         foreach (var image in referenceImages)
         {
+#pragma warning disable CA2000
             var imageBytes = await File.ReadAllBytesAsync(image.FilePath, cancellationToken);
             var imageContent = new ByteArrayContent(imageBytes);
             imageContent.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
             content.Add(imageContent, "image[]", image.Name);
+#pragma warning restore CA2000
         }
 
         var apiPath = referenceImages.Count > 0
             ? $"openai/deployments/{setting.DeploymentName}/images/edits?api-version=2025-04-01-preview"
             : $"openai/deployments/{setting.DeploymentName}/images/generations?api-version=2025-04-01-preview";
 
-        var baseUrl = setting.Endpoint.TrimEnd('/') + "/";
-        var requestUrl = new Uri(new Uri(baseUrl), apiPath);
+        var endpoint = setting.Endpoint.EndsWith('/')
+            ? setting.Endpoint
+            : setting.Endpoint + "/";
+        var requestUrl = new Uri(new Uri(endpoint), apiPath);
 
         progress.Report("APIリクエスト送信中...");
 
@@ -171,16 +183,16 @@ public sealed class ImageGeneratorService
             {
                 return await operation(cancellationToken);
             }
-            catch (HttpRequestException ex) when (attempt <= MaxRetries && IsRetryable(ex))
+            catch (HttpRequestException ex) when (attempt <= setting.MaxRetries && IsRetryable(ex))
             {
                 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
-                log.LogWarning("ビジーエラーのため {Delay} 秒後に再試行 (試行 {Attempt}/{Max}): {Message}", delay.TotalSeconds, attempt, MaxRetries, ex.Message);
+                log.WarnGenerationRetry(delay.TotalSeconds, attempt, setting.MaxRetries, ex.Message);
                 await Task.Delay(delay, cancellationToken);
             }
-            catch (TaskCanceledException) when (attempt <= MaxRetries && !cancellationToken.IsCancellationRequested)
+            catch (TaskCanceledException) when (attempt <= setting.MaxRetries && !cancellationToken.IsCancellationRequested)
             {
                 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
-                log.LogWarning("タイムアウトのため {Delay} 秒後に再試行 (試行 {Attempt}/{Max})", delay.TotalSeconds, attempt, MaxRetries);
+                log.WarnGenerationRetryTimeout(delay.TotalSeconds, attempt, setting.MaxRetries);
                 await Task.Delay(delay, cancellationToken);
             }
         }

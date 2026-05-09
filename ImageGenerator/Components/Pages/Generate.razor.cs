@@ -1,6 +1,7 @@
 namespace ImageGenerator.Components.Pages;
 
 using System.Diagnostics;
+using System.Globalization;
 
 using global::ImageGenerator.Models;
 using global::ImageGenerator.Services;
@@ -11,7 +12,7 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
 
-public partial class Generate : IDisposable
+public sealed partial class Generate : IDisposable
 {
     private static readonly string[] SupportedContentTypes = ["image/png", "image/jpeg", "image/webp"];
 
@@ -77,7 +78,6 @@ public partial class Generate : IDisposable
 
     public void Dispose()
     {
-        GC.SuppressFinalize(this);
         generationCts?.Cancel();
         generationCts?.Dispose();
         elapsedTimer?.Dispose();
@@ -112,7 +112,7 @@ public partial class Generate : IDisposable
                 var contentType = NormalizeContentType(file.ContentType, file.Name);
                 if (contentType is null)
                 {
-                    Log.LogWarning("スキップ: サポート外の形式 {Name}", file.Name);
+                    Log.WarnUploadSkipped(file.Name);
                     continue;
                 }
 
@@ -135,12 +135,17 @@ public partial class Generate : IDisposable
                     WebUrl = $"/uploads/{savedName}"
                 });
 
-                Log.LogInformation("アップロード完了: {Name} -> {Path}", file.Name, savedPath);
+                Log.InfoUploadCompleted(file.Name, savedPath);
             }
         }
-        catch (Exception ex)
+        catch (IOException ex)
         {
-            Log.LogError(ex, "アップロードエラー: {Message}", ex.Message);
+            Log.ErrorUploadFailed(ex, ex.Message);
+            errorMessage = $"アップロードに失敗しました: {ex.Message}";
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Log.ErrorUploadFailed(ex, ex.Message);
             errorMessage = $"アップロードに失敗しました: {ex.Message}";
         }
         finally
@@ -175,8 +180,7 @@ public partial class Generate : IDisposable
 
         generationCts = new CancellationTokenSource();
 
-        Log.LogInformation("生成開始 UI: Prompt={Prompt} Count={Count} RefImages={Ref}",
-            prompt, generateCount, uploadedImages.Count);
+        Log.InfoGenerateRequested(prompt, generateCount, uploadedImages.Count);
 
         try
         {
@@ -201,26 +205,29 @@ public partial class Generate : IDisposable
                 OnImageReady,
                 generationCts.Token);
 
-            Log.LogInformation("生成完了 UI: {Count} 件", generatedImages.Count);
+            Log.InfoGenerateUiCompleted(generatedImages.Count);
         }
         catch (OperationCanceledException) when (generationCts?.IsCancellationRequested == true)
         {
-            Log.LogInformation("生成キャンセル（ユーザー操作）");
+            Log.InfoGenerateCancelled();
         }
         catch (OperationCanceledException ex)
         {
-            Log.LogError(ex, "生成タイムアウトまたは予期せぬキャンセル");
+            Log.ErrorGenerateFailed(ex, ex.Message);
             errorMessage = "リクエストがタイムアウトまたはキャンセルされました。";
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
-            Log.LogError(ex, "生成エラー: {Message}", ex.Message);
+            Log.ErrorGenerateFailed(ex, ex.Message);
             errorMessage = ex.Message;
         }
         finally
         {
-            elapsedTimer?.Dispose();
-            elapsedTimer = null;
+            if (elapsedTimer is not null)
+            {
+                await elapsedTimer.DisposeAsync();
+                elapsedTimer = null;
+            }
             totalStopwatch?.Stop();
             isBusy = false;
             progressMessage = string.Empty;
@@ -283,7 +290,5 @@ public partial class Generate : IDisposable
     };
 
     private static string FormatElapsed(TimeSpan elapsed) =>
-        elapsed.TotalHours >= 1
-            ? elapsed.ToString(@"h\:mm\:ss")
-            : elapsed.ToString(@"m\:ss");
+        elapsed.TotalHours >= 1 ? elapsed.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture) : elapsed.ToString(@"m\:ss", CultureInfo.InvariantCulture);
 }
