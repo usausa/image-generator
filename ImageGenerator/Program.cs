@@ -1,10 +1,22 @@
 using ImageGenerator.Components;
+using ImageGenerator.Services;
+using ImageGenerator.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.Configure<ImageGeneratorSetting>(
+    builder.Configuration.GetSection("ImageGenerator"));
+
+builder.Services.AddHttpClient(nameof(ImageGeneratorService), client =>
+{
+    client.Timeout = System.Threading.Timeout.InfiniteTimeSpan;
+});
+
+builder.Services.AddSingleton<ImageGeneratorService>();
 
 var app = builder.Build();
 
