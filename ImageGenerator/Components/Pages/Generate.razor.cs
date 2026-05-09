@@ -4,12 +4,17 @@ using System.Diagnostics;
 
 using global::ImageGenerator.Models;
 using global::ImageGenerator.Services;
+using global::ImageGenerator.Settings;
 
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
 
-public partial class Generate : IAsyncDisposable
+public partial class Generate : IDisposable
 {
+    private static readonly string[] SupportedContentTypes = ["image/png", "image/jpeg", "image/webp"];
+
     //--------------------------------------------------------------------------------
     // State
     //--------------------------------------------------------------------------------
@@ -22,6 +27,7 @@ public partial class Generate : IAsyncDisposable
     private int generateCount = 1;
 
     private bool isBusy;
+    private bool isUploading;
     private string progressMessage = string.Empty;
     private string progressElapsed = string.Empty;
     private string? errorMessage;
@@ -29,8 +35,6 @@ public partial class Generate : IAsyncDisposable
     private bool isDragOver;
 
     private ElementReference dropZoneRef;
-    private IJSObjectReference? jsModule;
-    private DotNetObjectReference<Generate>? dotNetRef;
 
     private CancellationTokenSource? generationCts;
     private Timer? elapsedTimer;
@@ -40,17 +44,20 @@ public partial class Generate : IAsyncDisposable
     // Computed
     //--------------------------------------------------------------------------------
 
-    private bool IsBusy => isBusy;
+    private bool IsBusy => isBusy || isUploading;
 
     //--------------------------------------------------------------------------------
     // Inject
     //--------------------------------------------------------------------------------
 
     [Inject]
+    public IJSRuntime JS { get; set; } = default!;
+
+    [Inject]
     public ImageGeneratorService Generator { get; set; } = default!;
 
     [Inject]
-    public IJSRuntime JS { get; set; } = default!;
+    public IOptions<ImageGeneratorSetting> Setting { get; set; } = default!;
 
     [Inject]
     public ILogger<Generate> Log { get; set; } = default!;
@@ -59,75 +66,86 @@ public partial class Generate : IAsyncDisposable
     // Lifecycle
     //--------------------------------------------------------------------------------
 
-    public async ValueTask DisposeAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("initDropZone", dropZoneRef);
+        }
+    }
+
+    public void Dispose()
     {
         GC.SuppressFinalize(this);
         generationCts?.Cancel();
         generationCts?.Dispose();
         elapsedTimer?.Dispose();
-        dotNetRef?.Dispose();
-        if (jsModule is not null)
+    }
+
+    //--------------------------------------------------------------------------------
+    // Drop zone handlers (HTML drag events bound via @on* attributes)
+    //--------------------------------------------------------------------------------
+
+    private void OnDragEnter() => isDragOver = true;
+
+    private void OnDragLeave() => isDragOver = false;
+
+    private void OnDrop() => isDragOver = false;
+
+    //--------------------------------------------------------------------------------
+    // File upload: save to server disk, register as UploadedImage
+    //--------------------------------------------------------------------------------
+
+    private async Task OnFilesChangedAsync(InputFileChangeEventArgs e)
+    {
+        isUploading = true;
+        errorMessage = null;
+
+        var uploadDir = Path.GetFullPath(Setting.Value.UploadPath);
+        Directory.CreateDirectory(uploadDir);
+
+        try
         {
-            try
+            foreach (var file in e.GetMultipleFiles(maximumFileCount: 20))
             {
-                // Revoke all Object URLs before disposing the module.
-                if (uploadedImages.Count > 0)
+                var contentType = NormalizeContentType(file.ContentType, file.Name);
+                if (contentType is null)
                 {
-                    var urls = uploadedImages.Select(x => x.ObjectUrl).ToArray();
-                    await jsModule.InvokeVoidAsync("revokeObjectUrls", [urls]);
+                    Log.LogWarning("スキップ: サポート外の形式 {Name}", file.Name);
+                    continue;
                 }
-                await jsModule.DisposeAsync();
+
+                var ext = ExtensionFromContentType(contentType);
+                var savedName = $"upload-{DateTime.Now:yyyyMMdd-HHmmss-fff}{ext}";
+                var savedPath = Path.Combine(uploadDir, savedName);
+
+                await using (var dest = File.Create(savedPath))
+                await using (var src = file.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024))
+                {
+                    await src.CopyToAsync(dest);
+                }
+
+                var index = uploadedImages.Count + 1;
+                uploadedImages.Add(new UploadedImage
+                {
+                    Name = $"Image{index:D2}",
+                    ContentType = contentType,
+                    FilePath = savedPath,
+                    WebUrl = $"/uploads/{savedName}"
+                });
+
+                Log.LogInformation("アップロード完了: {Name} -> {Path}", file.Name, savedPath);
             }
-            catch (JSDisconnectedException)
-            {
-                // Circuit already disconnected; safe to ignore.
-            }
         }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
+        catch (Exception ex)
         {
-            dotNetRef = DotNetObjectReference.Create(this);
-            jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/imageGenerator.js");
-            await jsModule.InvokeVoidAsync("initDropZone", dropZoneRef, dotNetRef);
+            Log.LogError(ex, "アップロードエラー: {Message}", ex.Message);
+            errorMessage = $"アップロードに失敗しました: {ex.Message}";
         }
-    }
-
-    //--------------------------------------------------------------------------------
-    // JS Callbacks
-    //--------------------------------------------------------------------------------
-
-    [JSInvokable]
-    public async Task OnFilesDroppedAsync(DroppedFileEntry[] entries)
-    {
-        foreach (var entry in entries)
+        finally
         {
-            var index = uploadedImages.Count + 1;
-            uploadedImages.Add(new UploadedImage
-            {
-                Name = $"Image{index:D2}",
-                ContentType = entry.ContentType,
-                ObjectUrl = entry.ObjectUrl
-            });
+            isUploading = false;
         }
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public Task OnDragEnterAsync()
-    {
-        isDragOver = true;
-        return InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public Task OnDragLeaveAsync()
-    {
-        isDragOver = false;
-        return InvokeAsync(StateHasChanged);
     }
 
     //--------------------------------------------------------------------------------
@@ -161,19 +179,6 @@ public partial class Generate : IAsyncDisposable
 
         try
         {
-            // Fetch binary data from the browser just before sending to the API.
-            if (uploadedImages.Count > 0 && jsModule is not null)
-            {
-                progressMessage = "参照画像を取得中...";
-                StateHasChanged();
-                var urls = uploadedImages.Select(x => x.ObjectUrl).ToArray();
-                var base64List = await jsModule.InvokeAsync<string[]>("getImagesAsBase64", [urls]);
-                for (var i = 0; i < uploadedImages.Count; i++)
-                {
-                    uploadedImages[i].Data = Convert.FromBase64String(base64List[i]);
-                }
-            }
-
             var progress = new Progress<string>(msg =>
             {
                 progressMessage = msg;
@@ -190,9 +195,14 @@ public partial class Generate : IAsyncDisposable
             generatedImages.AddRange(results);
             Log.LogInformation("生成完了 UI: {Count} 件", results.Length);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (generationCts?.IsCancellationRequested == true)
         {
-            Log.LogInformation("生成キャンセル");
+            Log.LogInformation("生成キャンセル（ユーザー操作）");
+        }
+        catch (OperationCanceledException ex)
+        {
+            Log.LogError(ex, "生成タイムアウトまたは予期せぬキャンセル");
+            errorMessage = "リクエストがタイムアウトまたはキャンセルされました。";
         }
         catch (Exception ex)
         {
@@ -211,49 +221,58 @@ public partial class Generate : IAsyncDisposable
         }
     }
 
-    private async Task ClearInputsAsync()
+    private void ClearInputs()
     {
-        if (jsModule is not null && uploadedImages.Count > 0)
-        {
-            var urls = uploadedImages.Select(x => x.ObjectUrl).ToArray();
-            await jsModule.InvokeVoidAsync("revokeObjectUrls", [urls]);
-        }
-
         prompt = string.Empty;
         uploadedImages.Clear();
+        generatedImages.Clear();
+        previewImage = null;
         errorMessage = null;
     }
 
-    private async Task RemoveUploadedImageAsync(UploadedImage image)
+    private void RemoveUploadedImage(UploadedImage image)
     {
-        if (jsModule is not null)
-        {
-            await jsModule.InvokeVoidAsync("revokeObjectUrls", [new[] { image.ObjectUrl }]);
-        }
-
         uploadedImages.Remove(image);
 
-        // Renumber labels
         for (var i = 0; i < uploadedImages.Count; i++)
         {
-            var old = uploadedImages[i];
-            uploadedImages[i] = old with { Name = $"Image{i + 1:D2}" };
+            uploadedImages[i] = uploadedImages[i] with { Name = $"Image{i + 1:D2}" };
         }
     }
 
-    private void OpenPreview(GeneratedImage image)
-    {
-        previewImage = image;
-    }
+    private void OpenPreview(GeneratedImage image) => previewImage = image;
 
-    private void ClosePreview()
-    {
-        previewImage = null;
-    }
+    private void ClosePreview() => previewImage = null;
 
     //--------------------------------------------------------------------------------
-    // Helper
+    // Helpers
     //--------------------------------------------------------------------------------
+
+    private static string? NormalizeContentType(string contentType, string fileName)
+    {
+        if (SupportedContentTypes.Contains(contentType))
+        {
+            return contentType;
+        }
+
+        // ブラウザによって ContentType が空や application/octet-stream になることがある
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            _ => null
+        };
+    }
+
+    private static string ExtensionFromContentType(string contentType) => contentType switch
+    {
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/webp" => ".webp",
+        _ => ".png"
+    };
 
     private static string FormatElapsed(TimeSpan elapsed) =>
         elapsed.TotalHours >= 1

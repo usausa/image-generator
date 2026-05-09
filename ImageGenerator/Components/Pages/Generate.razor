@@ -2,7 +2,7 @@
 
 <PageTitle>ImageGenerator</PageTitle>
 
-<div class="ig" @ref="dropZoneRef">
+<div class="ig">
 
     <!-- Header / Action bar -->
     <div class="ig-actions">
@@ -18,10 +18,10 @@
             </div>
         </div>
         <div class="ig-actions-right">
-            <button class="btn-se-primary" @onclick="GenerateAsync" disabled="@(IsBusy || string.IsNullOrWhiteSpace(prompt))">
+            <button type="button" class="btn-se-primary" @onclick="GenerateAsync" disabled="@(IsBusy || string.IsNullOrWhiteSpace(prompt))">
                 <i class="bi bi-magic"></i> 生成
             </button>
-            <button class="btn-se-ghost" @onclick="ClearInputsAsync" disabled="@IsBusy">
+            <button type="button" class="btn-se-ghost" @onclick="ClearInputs" disabled="@IsBusy">
                 <i class="bi bi-eraser"></i> クリア
             </button>
         </div>
@@ -32,10 +32,19 @@
         <textarea class="ig-prompt" placeholder="プロンプトを入力してください。参照画像がある場合は Image01, Image02 などで参照できます。"
                   @bind="prompt" @bind:event="oninput" disabled="@IsBusy" rows="4"></textarea>
 
-        <!-- Drop zone -->
-        <div class="ig-drop-zone @(isDragOver ? "drop-zone-active" : "")">
+        <!-- Drop zone: transparent InputFile covers the entire area for both click and drag-and-drop -->
+        <div class="ig-drop-zone @(isDragOver ? "drop-zone-active" : "") @(IsBusy ? "drop-zone-disabled" : "")"
+             @ref="dropZoneRef"
+             @ondragenter="OnDragEnter" @ondragleave="OnDragLeave"
+             @ondragover:preventDefault
+             @ondrop:preventDefault @ondrop="OnDrop">
             <i class="bi bi-cloud-arrow-up"></i>
-            <span>参照画像をここにドラッグ＆ドロップ（PNG / JPEG / WebP）</span>
+            <span>参照画像をここにドラッグ＆ドロップ、またはクリックして選択（PNG / JPEG / WebP）</span>
+            @if (!IsBusy)
+            {
+                <InputFile OnChange="OnFilesChangedAsync" multiple accept="image/png,image/jpeg,image/webp"
+                           class="ig-drop-input" />
+            }
         </div>
 
         <!-- Reference image thumbnails -->
@@ -45,9 +54,9 @@
                 @foreach (var img in uploadedImages)
                 {
                     <div class="ig-ref-thumb" title="@img.Name">
-                        <img src="@img.ObjectUrl" alt="@img.Name" />
+                        <img src="@img.WebUrl" alt="@img.Name" />
                         <span class="ig-ref-label">@img.Name</span>
-                        <button class="ig-ref-remove" @onclick="() => RemoveUploadedImageAsync(img)" disabled="@IsBusy" title="削除">
+                        <button type="button" class="ig-ref-remove" @onclick="() => RemoveUploadedImage(img)" disabled="@IsBusy" title="削除">
                             <i class="bi bi-x"></i>
                         </button>
                     </div>
@@ -56,8 +65,17 @@
         }
     </div>
 
-    <!-- Progress -->
-    @if (IsBusy)
+    <!-- Upload progress -->
+    @if (isUploading)
+    {
+        <div class="ig-progress">
+            <div class="spinner-se" role="status"></div>
+            <span class="ig-progress-message">アップロード中...</span>
+        </div>
+    }
+
+    <!-- Generation progress -->
+    @if (isBusy)
     {
         <div class="ig-progress">
             <div class="spinner-se spinner-se-lg" role="status"></div>
@@ -74,7 +92,7 @@
         <div class="fb-error-toast">
             <i class="bi bi-exclamation-circle"></i>
             <span>@errorMessage</span>
-            <button class="btn-se-icon" @onclick="() => errorMessage = null"><i class="bi bi-x"></i></button>
+            <button type="button" class="btn-se-icon" @onclick="() => errorMessage = null"><i class="bi bi-x"></i></button>
         </div>
     }
 
@@ -88,7 +106,7 @@
             @foreach (var image in generatedImages)
             {
                 <div class="ig-thumb" @onclick="() => OpenPreview(image)" title="@image.FileName">
-                    <img src="data:image/png;base64,@Convert.ToBase64String(image.Data)" alt="@image.FileName" />
+                    <img src="@image.WebUrl" alt="@image.FileName" />
                     <div class="ig-thumb-info">
                         <span class="ig-thumb-name">@image.FileName</span>
                         <span class="ig-thumb-elapsed">@image.Elapsed.ToString(@"m\:ss")</span>
@@ -106,12 +124,12 @@
             <div class="ig-preview-header">
                 <span class="ig-preview-filename">@previewImage.FileName</span>
                 <span class="ig-preview-elapsed">処理時間: @previewImage.Elapsed.ToString(@"m\:ss\.ff")</span>
-                <button class="btn-se-icon" @onclick="ClosePreview" title="閉じる">
+                <button type="button" class="btn-se-icon" @onclick="ClosePreview" title="閉じる">
                     <i class="bi bi-x-lg"></i>
                 </button>
             </div>
             <div class="ig-preview-body">
-                <img src="data:image/png;base64,@Convert.ToBase64String(previewImage.Data)" alt="@previewImage.FileName" class="ig-preview-image" />
+                <img src="@previewImage.WebUrl" alt="@previewImage.FileName" class="ig-preview-image" />
             </div>
         </div>
     }

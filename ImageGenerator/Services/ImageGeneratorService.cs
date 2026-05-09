@@ -77,7 +77,7 @@ public sealed class ImageGeneratorService
             {
                 FileName = fileName,
                 FilePath = filePath,
-                Data = imageData,
+                WebUrl = $"/output/{fileName}",
                 Elapsed = sw.Elapsed
             };
         }
@@ -105,7 +105,9 @@ public sealed class ImageGeneratorService
 
         foreach (var image in referenceImages)
         {
-            var imageContent = new ByteArrayContent(image.Data);
+            // ファイルから読み込む（メモリに byte[] を持たない設計）
+            var imageBytes = await File.ReadAllBytesAsync(image.FilePath, cancellationToken);
+            var imageContent = new ByteArrayContent(imageBytes);
             imageContent.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
             content.Add(imageContent, "image[]", image.Name);
         }
