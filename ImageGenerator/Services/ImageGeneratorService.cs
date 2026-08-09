@@ -14,6 +14,8 @@ using Microsoft.Extensions.Options;
 
 public sealed class ImageGeneratorService
 {
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromMinutes(1);
+
     private readonly ILogger<ImageGeneratorService> log;
     private readonly HttpClient httpClient;
     private readonly ImageGeneratorSetting setting;
@@ -70,7 +72,7 @@ public sealed class ImageGeneratorService
                 cancellationToken);
             sw.Stop();
 
-            var fileName = $"output-{DateTime.Now:yyyyMMdd-HHmmss}-{index:D2}{ext}";
+            var fileName = $"output-{DateTime.Now:yyyyMMdd-HHmmss}-{index:D2}-{Guid.NewGuid():N}{ext}";
             var filePath = Path.Combine(outputDir, fileName);
             await File.WriteAllBytesAsync(filePath, imageData, cancellationToken);
 
@@ -156,7 +158,7 @@ public sealed class ImageGeneratorService
 
         if (!response.IsSuccessStatusCode)
         {
-            throw CreateRequestException(response.StatusCode, responseBody);
+            throw CreateRequestException(response, responseBody);
         }
 
         using var document = JsonDocument.Parse(responseBody);
@@ -181,9 +183,18 @@ public sealed class ImageGeneratorService
             {
                 return await operation(cancellationToken);
             }
-            catch (HttpRequestException ex) when (attempt <= setting.MaxRetries && IsRetryable(ex))
+            catch (AppException ex) when (attempt <= setting.MaxRetries &&
+                                         (ex.StatusCode is not null) &&
+                                         IsRetryableStatus(ex.StatusCode.Value))
             {
-                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                var delay = GetRetryDelay(attempt, ex.RetryAfter);
+                log.WarnGenerationRetry(delay.TotalSeconds, attempt, setting.MaxRetries, ex.Message);
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (HttpRequestException ex) when (attempt <= setting.MaxRetries &&
+                                                 ((ex.StatusCode is null) || IsRetryableStatus(ex.StatusCode.Value)))
+            {
+                var delay = GetRetryDelay(attempt, null);
                 log.WarnGenerationRetry(delay.TotalSeconds, attempt, setting.MaxRetries, ex.Message);
                 await Task.Delay(delay, cancellationToken);
             }
@@ -196,17 +207,39 @@ public sealed class ImageGeneratorService
         }
     }
 
-    private static bool IsRetryable(HttpRequestException ex) =>
-        ex.StatusCode is HttpStatusCode.TooManyRequests
+    private static bool IsRetryableStatus(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.TooManyRequests
             or HttpStatusCode.RequestTimeout
             or HttpStatusCode.InternalServerError
             or HttpStatusCode.BadGateway
             or HttpStatusCode.ServiceUnavailable
             or HttpStatusCode.GatewayTimeout;
 
-    private static AppException CreateRequestException(HttpStatusCode statusCode, string responseBody)
+    private static TimeSpan GetRetryDelay(int attempt, TimeSpan? retryAfter)
     {
-        var message = $"API request failed. Status={(int)statusCode} {statusCode}. Response={responseBody}";
-        return new AppException(AppErrorCode.GenerationRequestFailed, message);
+        var delay = (retryAfter > TimeSpan.Zero) ? retryAfter.Value : TimeSpan.FromSeconds(Math.Pow(2, attempt));
+        return (delay > MaxRetryDelay) ? MaxRetryDelay : delay;
+    }
+
+    private static AppException CreateRequestException(HttpResponseMessage response, string responseBody)
+    {
+        var message = $"API request failed. Status={(int)response.StatusCode} {response.StatusCode}. Response={responseBody}";
+        return new AppException(AppErrorCode.GenerationRequestFailed, message, response.StatusCode, GetRetryAfter(response));
+    }
+
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter is null)
+        {
+            return null;
+        }
+
+        if (retryAfter.Delta is not null)
+        {
+            return retryAfter.Delta;
+        }
+
+        return (retryAfter.Date is not null) ? retryAfter.Date - DateTimeOffset.UtcNow : null;
     }
 }

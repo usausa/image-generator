@@ -48,6 +48,14 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Warning, Message = "Generation retry by timeout. delay=[{Delay}], attempt=[{Attempt}], max=[{Max}]")]
     public static partial void WarnGenerationRetryTimeout(this ILogger log, double delay, int attempt, int max);
 
+    // Retention
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "File retention completed. deleted=[{Deleted}], retentionDays=[{RetentionDays}]")]
+    public static partial void InfoRetentionCompleted(this ILogger log, int deleted, int retentionDays);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "File retention delete failed. path=[{Path}], message=[{Message}]")]
+    public static partial void WarnRetentionDeleteFailed(this ILogger log, string path, string message);
+
     // UI
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Generate requested. prompt=[{Prompt}], count=[{Count}], refImages=[{RefImages}]")]

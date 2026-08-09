@@ -48,6 +48,7 @@ builder.Services.AddHttpClient(nameof(ImageGeneratorService), client =>
 });
 
 builder.Services.AddSingleton<ImageGeneratorService>();
+builder.Services.AddHostedService<FileRetentionService>();
 
 //--------------------------------------------------------------------------------
 // Configure request pipeline
