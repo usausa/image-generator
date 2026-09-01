@@ -18,5 +18,8 @@ public sealed class ProgressState
     public int Current { get; private init; }
     public int Total { get; private init; }
 
-    private ProgressState(ProgressKind kind) => Kind = kind;
+    private ProgressState(ProgressKind kind)
+    {
+        Kind = kind;
+    }
 }

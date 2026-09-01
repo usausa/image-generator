@@ -99,7 +99,7 @@ public sealed class ImageGeneratorService
         log.InfoGenerationCompleted(
             count,
             totalSw.Elapsed,
-            string.Join(", ", results.Select(r => r.FileName)));
+            String.Join(", ", results.Select(r => r.FileName)));
 
         return results;
     }
@@ -183,7 +183,7 @@ public sealed class ImageGeneratorService
             {
                 return await operation(cancellationToken);
             }
-            catch (AppException ex) when (attempt <= setting.MaxRetries &&
+            catch (AppException ex) when ((attempt <= setting.MaxRetries) &&
                                          (ex.StatusCode is not null) &&
                                          IsRetryableStatus(ex.StatusCode.Value))
             {
@@ -191,14 +191,14 @@ public sealed class ImageGeneratorService
                 log.WarnGenerationRetry(delay.TotalSeconds, attempt, setting.MaxRetries, ex.Message);
                 await Task.Delay(delay, cancellationToken);
             }
-            catch (HttpRequestException ex) when (attempt <= setting.MaxRetries &&
+            catch (HttpRequestException ex) when ((attempt <= setting.MaxRetries) &&
                                                  ((ex.StatusCode is null) || IsRetryableStatus(ex.StatusCode.Value)))
             {
                 var delay = GetRetryDelay(attempt, null);
                 log.WarnGenerationRetry(delay.TotalSeconds, attempt, setting.MaxRetries, ex.Message);
                 await Task.Delay(delay, cancellationToken);
             }
-            catch (TaskCanceledException) when (attempt <= setting.MaxRetries && !cancellationToken.IsCancellationRequested)
+            catch (TaskCanceledException) when ((attempt <= setting.MaxRetries) && !cancellationToken.IsCancellationRequested)
             {
                 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
                 log.WarnGenerationRetryTimeout(delay.TotalSeconds, attempt, setting.MaxRetries);

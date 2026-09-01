@@ -169,7 +169,7 @@ public sealed partial class Generate : IDisposable
 
     private async Task GenerateAsync()
     {
-        if (isBusy || string.IsNullOrWhiteSpace(prompt))
+        if (isBusy || String.IsNullOrWhiteSpace(prompt))
         {
             return;
         }
@@ -292,7 +292,9 @@ public sealed partial class Generate : IDisposable
         }
 
         // ブラウザによって ContentType が空や application/octet-stream になることがある
+        #pragma warning disable CA1308
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        #pragma warning restore CA1308
         return ext switch
         {
             ".png" => "image/png",
