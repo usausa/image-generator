@@ -81,7 +81,13 @@ public sealed partial class Generate : IDisposable
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("initDropZone", dropZoneRef);
+            try
+            {
+                await JS.InvokeVoidAsync("initDropZone", dropZoneRef);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
         }
     }
 

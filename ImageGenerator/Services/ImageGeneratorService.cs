@@ -139,7 +139,7 @@ public sealed class ImageGeneratorService
             ? $"openai/deployments/{setting.DeploymentName}/images/edits?api-version=2025-04-01-preview"
             : $"openai/deployments/{setting.DeploymentName}/images/generations?api-version=2025-04-01-preview";
 
-        var endpoint = setting.Endpoint.EndsWith('/')
+        var endpoint = setting.Endpoint.EndsWith('/', StringComparison.Ordinal)
             ? setting.Endpoint
             : setting.Endpoint + "/";
         var requestUrl = new Uri(new Uri(endpoint), apiPath);
